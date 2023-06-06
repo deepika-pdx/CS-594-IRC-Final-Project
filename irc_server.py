@@ -1,75 +1,96 @@
 import socket
 import select
+import threading
+
+#Global lists and dictionaries
+Clients_list = []
+Nick_names_list = []
+Room_object_dict = {}      #this dictionary maps roomname to room_object
+Clients_socket_dict = {}   #this dictionary maps nickname to client_socket
+Users_object_dict = {}     #this dictionary maps nickname to user_object
 
 # Assigning server IP address and Port number
 server_ip_address = "127.0.0.1"
 server_port = 1234
 
+instructions = '\nMENU:\n' \
+               '1.DISPLAY ROOMS\n' \
+               '2.CREATE ROOM\n' \
+               '3.JOIN ROOM\n' \
+               '4.SWITCH ROOMS\n' \
+               '5.DISPLAY USERS\n' \
+               '6.DIRECT MESSAGE\n' \
+               '7.LEAVE ROOM\n' \
+               '8.DISPLAY MENU\n' \
+               '9.QUIT\n' \
+               '\nEnter Your Choice:'
+
+#Class defination
+class User:
+    def __init__(self, name):
+        self.name = name
+        self.Room_object_dict = []
+        self.thisRoom = ''
+
+def Client_Send_Recv_Fun(client):
+    nick=''
+    while True:
+        try:
+            message = client.recv(1024).decode('utf-8')
+            args = message.split(" ")
+            name = Clients_socket_dict[args[0]]
+            nick = args[0]
+            if 'MSG_HELP' in message:
+                name.send(instructions.encode('utf-8'))
+            else:
+                name.send('functionality yet to be added'.encode('utf-8'))
+
+        except Exception as e:
+            print("exception occured: ", e)
+            index = Clients_list.index(client)
+            Clients_list.remove(client)
+            client.close()
+          
+            print(f'nick name is {nick}')
+            if nick in Nick_names_list:
+                Remove_Client_Fun(nick)
+            if nick in Nick_names_list:
+                Nick_names_list.remove(nick)
+            #Message_broadcast(f'{nickname} left the room'.encode('utf-8'))
+            break
+# Processing received client messages
+def receive_client_message():
+    while True:
+        client, address = server_socket.accept()
+        print('Got connection from', address)
+        #print(f'connected with {str(address)}')
+        #print(client)
+        client.send('MSG_PROVIDE_NAME'.encode('utf-8'))
+        nickname = client.recv(1024).decode('utf-8')
+        Nick_names_list.append(nickname)     #clients nickname list
+        Clients_list.append(client)          #clients socket list
+
+        #Create user object, and insert user objects/socket in dictonary
+        user_obj = User(nickname)
+        Users_object_dict[nickname] = user_obj   #This is dictionary which stores nickname to user object mapping
+        Clients_socket_dict[nickname] = client   #this dictionary mapping between nickname and client_socket
+        print(f'Nickname of the client is {nickname}')
+        #client.send('Connected to the server!'.encode('utf-8'))
+        client.send(instructions.encode('utf-8'))
+
+        #Start seperate thread to communicate with each client
+        thread = threading.Thread(target=Client_Send_Recv_Fun, args=(client,))
+        thread.start()
+
 # Creating a server socket instance and binding it with the declared port number
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+#server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server_socket.bind((server_ip_address, server_port))
 server_socket.listen()
-
-# Creating a list for storing the client sockets
-client_socket_list = [server_socket]
-
-# Storing client connection details
-clients = {}
-print(f"Listening for client connections on {server_ip_address}:{server_port}")
+print('Welcome to Internet Relay Chat')
+print('Socket Successfully Created')
+print('Server is in listen mode')
+receive_client_message()
 
 
-# Processing received client messages
-def receive_client_message(client_conn):
-    try:
-        message_header = client_conn.recv(10)
-        if not len(message_header):
-            return False
-
-        message_length = int(message_header.decode('utf-8').strip())
-        return {'header': message_header, 'data': client_conn.recv(message_length)}
-    except:
-        return False
-
-
-# Accepting client connections and reading and storing client messages
-while True:
-    read_client_sockets, _, exception_client_sockets = select.select(client_socket_list, [], client_socket_list)
-    for each_client_socket in read_client_sockets:
-        # Handling new client connections
-        if each_client_socket == server_socket:
-            client_conn, client_address = server_socket.accept()
-            client_data = receive_client_message(client_conn)
-
-            if client_data is False:
-                continue
-
-            client_socket_list.append(client_conn)
-            clients[client_conn] = client_data
-            print(f"Accepted new client connection having address: {client_address[0]} and port: {client_address[1]}")
-        # Handling messages from existing connected clients
-        else:
-            client_message = receive_client_message(each_client_socket)
-            # Handling clients that closed the connection with server
-            if client_message is False:
-                print('Closed connection from: {}'.format(clients[each_client_socket]['data'].decode('utf-8')))
-                client_socket_list.remove(each_client_socket)
-                del clients[each_client_socket]
-                continue
-            # Handling and sharing the clients messages to other clients
-            # Fetching client message
-            client = clients[each_client_socket]
-            print(f"Received message from client: {client['data'].decode('utf-8')}: {client_message['data'].decode('utf-8')}")
-
-            # Sharing the client message to other clients connected to the server
-            for client_conn in clients:
-                if client_conn != each_client_socket:
-                    client_conn.send(client['header'] + client['data'] + client_message['header'] + client_message['data'])
-
-        for client_socket in exception_client_sockets:
-            # Remove from list for client sockets
-            client_socket_list.remove(client_socket)
-
-            # Remove from our list of clients
-            del clients[client_socket]
 
