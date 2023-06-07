@@ -55,7 +55,7 @@ def Send_Fun():
                 roomname = input("Enter room name to leave: ")
                 message = input_name + " MSG_LEAVE_ROOM " + roomname
             elif input_msg == '8' or input_msg =='DISPLAY MENU':
-                message = input_name + " MSG_HELP "1
+                message = input_name + " MSG_HELP "
             elif input_msg == '9' or input_msg =='QUIT':
                 message = input_name + " MSG_QUIT "
             else:
