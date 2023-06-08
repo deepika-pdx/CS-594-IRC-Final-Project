@@ -66,9 +66,14 @@ def handle_command(command, client_socket, client_address):
             channel = parts[1]
             if channel not in rooms:
                 rooms[channel] = []
-            rooms[channel].append(client_socket)
+                rooms[channel].append(client_socket)
+                msg='Created a channel: {}\r\n'.format(channel)
+            else:
+                msg='Channel {} already exists.\r\n'.format(channel)
+            
+
             try:
-                client_socket.send(bytes('Created a channel: {}\r\n'.format(channel), 'UTF-8'))
+                client_socket.send(bytes(msg, 'UTF-8'))
             except ConnectionResetError:
                 remove_client_from_rooms(client_socket)
                 client_socket.close()
@@ -89,7 +94,9 @@ def handle_command(command, client_socket, client_address):
                 rooms[channel] = []
             rooms[channel].append(client_socket)
             try:
-                client_socket.send(bytes('Joined channel: {}\r\n'.format(channel), 'UTF-8'))
+                msg='Joined channel: {}\r\n'.format(channel)
+                broadcast_message(channel,msg)
+                #client_socket.send(bytes('Joined channel: {}\r\n'.format(channel), 'UTF-8'))
             except ConnectionResetError:
                 remove_client_from_rooms(client_socket)
                 client_socket.close()
