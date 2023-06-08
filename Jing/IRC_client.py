@@ -2,19 +2,19 @@
 
 import socket
 import threading
+import sys
 
-# server address
-server = 'localhost'
-# port number  
-port = 6667  
+server = 'localhost'  # server address
+port = 6667  # port number 
 
 # Connect to the server
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client_socket.connect((server, port))
 print('Connected to the server.')
 
-nickname = input('Enter your nickname:')
-client_socket.send(bytes(f'NICK {nickname}\r\n', 'UTF-8'))
+name = input('Enter your nickname:')
+client_socket.send(bytes(f'NICK {name}\r\n', 'UTF-8'))
+
 
 room = input('Enter the room name: ')
 client_socket.send(bytes(f'JOIN {room}\r\n', 'UTF-8'))
@@ -50,7 +50,7 @@ def send_messages():
 def receive_messages():
     while True:
         try:
-            message = client_socket.recv(2048).decode('UTF-8')
+            message = client_socket.recv(2048).decode('UTF-8')          
             if not message:
                 break
             print('->:', message.strip())
@@ -73,7 +73,7 @@ receive_thread.start()
 # Function to send commands to the server
 def send_command():
     while True:
-        command = input('Enter command: (commands include: NICK/CREATE/JOIN/PRIVMSG/LIST/QUIT)\r\n')
+        command = input('Enter command: (commands include: DISPLAYUSERS/CREATE/JOIN/PRIVMSG/LIST/QUIT)\r\n')
         if command.lower() == 'quit':
             break
         client_socket.send(bytes(command + '\r\n', 'UTF-8'))

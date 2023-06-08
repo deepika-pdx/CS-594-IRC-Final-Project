@@ -18,41 +18,47 @@
 import socket
 import threading
 
+#Dictionary to store the rooms and their clients
+rooms = {}
+Nick_names_list = []
+      
 # server address
 server = 'localhost'
 # port number 
 port = 6667  
-# Create a socket for the server
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_socket.bind((server, port))
-#server can store 5 clients socket for each room
-server_socket.listen(5) 
-print('Connecting server...')
-
-#Dictionary to store the rooms and their clients
-rooms = {}
-
+       
 #Function to process all commands
 def handle_command(command, client_socket, client_address):
-    global rooms  #global veriables
+    global rooms  #global variables
 
     #command NICK
     if command.startswith('NICK'):
-        parts = command.split()
+        parts = command.split() # this has nick as value 0 and satvika as value 1
         if len(parts) >= 2:
             nickname = parts[1]
+            Nick_names_list.append(nickname) #clients nickname list
             try:
+                print("User " + nickname +" created ")
                 client_socket.send(bytes('Hello, {}!\r\n'.format(nickname), 'UTF-8'))
             except ConnectionResetError:
                 remove_client_from_rooms(client_socket)
                 client_socket.close()
         else:
             try:
-                client_socket.send(bytes('Invalide command. Usage: NICK <nickname>\r\n', 'UTF-8'))
+                client_socket.send(bytes('Invalid command. Usage: NICK <nickname>\r\n', 'UTF-8'))
             except ConnectionResetError:
                 remove_client_from_rooms(client_socket)
                 client_socket.close()
 
+    #command Display users
+    elif command.startswith('DISPLAYUSERS'):
+        available_users = 'Available users:  {}'.format(' , '.join(Nick_names_list))
+        try:
+            client_socket.send(bytes(available_users + '\r\n', 'UTF-8'))
+        except ConnectionResetError:
+            remove_client_from_rooms(client_socket)
+            client_socket.close()
+                
     #command CREATE
     elif command.startswith('CREATE'):
         parts = command.split()
@@ -62,7 +68,7 @@ def handle_command(command, client_socket, client_address):
                 rooms[channel] = []
             rooms[channel].append(client_socket)
             try:
-                client_socket.send(bytes('Create a channel: {}\r\n'.format(channel), 'UTF-8'))
+                client_socket.send(bytes('Created a channel: {}\r\n'.format(channel), 'UTF-8'))
             except ConnectionResetError:
                 remove_client_from_rooms(client_socket)
                 client_socket.close()
@@ -73,6 +79,7 @@ def handle_command(command, client_socket, client_address):
                 remove_client_from_rooms(client_socket)
                 client_socket.close()
 
+   
     #command JOIN
     elif command.startswith('JOIN'):
         parts = command.split()
@@ -147,7 +154,9 @@ def handle_command(command, client_socket, client_address):
             except ConnectionResetError:
                 remove_client_from_rooms(client_socket)
                 client_socket.close()
-
+    else:
+        client_socket.send(bytes('Invalide command: Type the command from the above list\r\n', 'UTF-8'))
+        
 
 #Functions for error handling
 def remove_client_from_rooms(client_socket):
@@ -162,26 +171,40 @@ def broadcast_message(room, message):
     if room in rooms:
         for client in rooms[room]:
             client.send(bytes(f':localhost {message}\r\n', 'UTF-8'))
+            
+# Continuously receive and process client messages
+def process_msg_fun(client_socket, client_address):
+    while True:
+        try:
+            message = client_socket.recv(2048).decode('UTF-8')
+            print('Received:', message.strip())
+
+            #handle client commands
+            handle_command(message, client_socket, client_address)
+        except ConnectionResetError:
+            remove_client_from_rooms(client_socket)
+            client_socket.close()
+            break
 
 # Accept client connections
-client_socket, client_address = server_socket.accept()
-print('Client connected:', client_address)
+def Accept_clients_Fun():
+    while True:
+        client_socket, client_address = server_socket.accept()
+        print('Client connected:', client_address)
+        client_socket.send(b'Localhost 127.0.0.1 Welcome to the IRC_Server!\r\n') # Welcome message to the client
+        #Start seperate thread to communicate with each client
+        thread = threading.Thread(target=process_msg_fun, args=(client_socket,client_address))
+        thread.start()
 
-# Welcome message to the client
-client_socket.send(b'Localhost 127.0.0.1 Welcome to the IRC_Server!\r\n')
+# Create a socket for the server
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_socket.bind((server, port))
+#server can store 5 clients socket for each room
+server_socket.listen(5) 
+print('Connecting server...')
+print('Server is in listen mode')
 
-# Continuously receive and process client messages
-while True:
-    try:
-        message = client_socket.recv(2048).decode('UTF-8')
-        print('Received:', message.strip())
-
-        #handle client commands
-        handle_command(message, client_socket, client_address)
-    except ConnectionResetError:
-        remove_client_from_rooms(client_socket)
-        client_socket.close()
-        break
+Accept_clients_Fun()
 
 # Close the server socket
 server_socket.close()
