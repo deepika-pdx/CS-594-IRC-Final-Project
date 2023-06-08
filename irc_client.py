@@ -1,55 +1,89 @@
+# This file is IRC_client script, which can process commands from IRC_server part.
+
 import socket
+import threading
 import sys
-import errno
 
-server_IP_address = "127.0.0.1"
-server_port = 1234
+server = 'localhost'  # server address
+port = 6667  # port number 
 
-input_name = input("Enter a name: ")
-
-# Creating client socket and connecting to the server
+# Connect to the server
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-client_socket.connect((server_IP_address, server_port))
-client_socket.setblocking(False)
+client_socket.connect((server, port))
+print('Connected to the server.')
 
-# Sending client information to the server
-client_name = input_name.encode('utf-8')
-client_header = f"{len(client_name):<10}".encode('utf-8')
-client_socket.send(client_header + client_name)
-
-# Sending messages to the server
-while True:
-    client_message = input(f"{input_name}> ")
-    if client_message:
-        client_message = client_message.encode('utf-8')
-        client_message_header = f"{len(client_message):<10}".encode('utf-8')
-        client_socket.send(client_message_header + client_message)
-
-    # Receive messages from the server
-    try:
-        while True:
-            received_sender_header = client_socket.recv(10)
-            if not len(received_sender_header):
-                print("Server closed the connection")
-                sys.exit()
-
-            received_sender_length = int(received_sender_header.decode('utf-8').strip())
-            sender_name = client_socket.recv(received_sender_length).decode('utf-8')
-
-            received_msg_header = client_socket.recv(10)
-            received_msg_length = int(received_msg_header.decode('utf-8').strip())
-            received_msg = client_socket.recv(received_msg_length).decode('utf-8')
-
-            print(f"{sender_name}> {received_msg}")
-    except IOError as e:
-        # In case of no incoming data, continue as normal
-        if e.errno != errno.EAGAIN and e.errno != errno.EWOULDBLOCK:
-            print('Error while reading messages: {}'.format(str(e)))
-            sys.exit()
-        continue
-    except Exception as e:
-        print("Error in receiving messages from the server: " + str(e))
-        sys.exit()
+name = input('Enter your nickname:')
+client_socket.send(bytes(f'NICK {name}\r\n', 'UTF-8'))
 
 
+room = input('Enter the room name: ')
+client_socket.send(bytes(f'JOIN {room}\r\n', 'UTF-8'))
 
+#Function to change Nick name
+def send_message():
+    while True:
+        message = input()
+        client_socket.send(bytes(message + '\r\n', 'UTF-8'))
+
+#Function to send private message to a room
+def send_messages():
+    while True:
+        message = input()
+        if message.startswith('/'):
+            command, *args = message.split()
+            if command == '/send':
+                if args:
+                    target_room = args[0]
+                    if len(args) > 1:
+                        message = ' '.join(args[1:])
+                        client_socket.send(bytes(f'PRIVMSG {target_room} :{message}\r\n', 'UTF-8'))
+                    else:
+                        print('Please provide a message to send.')
+                else:
+                    print('Please provide the room name as an argument.')
+            else:
+                print('Invalid command.')
+        else:
+            client_socket.send(bytes(f'PRIVMSG {room} :{message}\r\n', 'UTF-8'))
+
+# Function to receive and process server messages
+def receive_messages():
+    while True:
+        try:
+            message = client_socket.recv(2048).decode('UTF-8')          
+            if not message:
+                break
+            print('->:', message.strip())
+
+            # Process server commands
+        except ConnectionResetError:
+            break
+        except ConnectionResetError:
+            break
+        except OSError as e:
+            if e.errno == 10053:
+                break
+            else:
+                raise e
+
+# Start a separate thread to receive messages from the server
+receive_thread = threading.Thread(target=receive_messages)
+receive_thread.start()
+
+# Function to send commands to the server
+def send_command():
+    while True:
+        command = input('Enter command: (commands include: DISPLAYUSERS/CREATE/JOIN/PRIVMSG/LIST/QUIT)\r\n')
+        if command.lower() == 'quit':
+            break
+        client_socket.send(bytes(command + '\r\n', 'UTF-8'))
+
+# Start a separate thread to send commands to the server
+send_thread = threading.Thread(target=send_command)
+send_thread.start()
+
+# Wait for the send thread to finish
+send_thread.join()
+
+# Close the client socket
+client_socket.close()
