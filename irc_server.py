@@ -1,27 +1,10 @@
-# This is a Simple IRC(Internet Replay Chat)Program. The program composed of IRC-server
-# connection anc IRC-client parts.  The basic commands for server are Username, CREATE, JOIN,
-# LIST AND QUIT command.
-# Username – Give the user a nickname or change the previous one. The server should
-#        report an error message if a user attempts to use an already-taken nickname.
-# CREATE – Create a channel name.
-# JOIN - Specify which channel do you want to join.
-# LIST - List the available channels we have.
-# PRIVMSG - PRIVMSG can send message to a specific room or client.
-# QUIT – End the client session. The server should announce the client’s departure to
-#        all other users sharing the channel with the departing client
-
-# This program did not hand multiple clients join room but client can
-# join multiple room.
-
-
 import socket
 import threading
 
 # Dictionary to store the rooms and their clients
 rooms_and_client_sockets = {}
 rooms_and_users = {}
-usernames_and_client_sockets = {}
-current_user = ""
+client_sockets_and_usernames = {}
 # server address
 server = 'localhost'
 # port number
@@ -32,27 +15,27 @@ instructions = '\nMENU:\n' \
                '2.DISPLAY ROOMS (Usage: display_rooms)\n' \
                '3.JOIN ROOM (Usage: join <room number>)\n' \
                '4.DISPLAY MEMBERS OF THE ROOM (Usage: display_members <room number>)\n' \
-               '5.SEND MESSAGE TO ROOM (Usage: send <room number>)\n' \
+               '5.SEND MESSAGE TO ROOM (Usage: send <room number> "<message>")\n' \
                '6.LEAVE ROOM (Usage: leave <room number>)\n' \
-               '7.PRIVATE MESSAGE (Usage: private <username>)\n' \
-               '8.QUIT (Usage: quit)\n' \
+               '7.DISPLAY ALL MEMBERS OF THE APP (Usage: display_all_members)\n' \
+               '8.PRIVATE MESSAGE (Usage: private <username> "<messsage>")\n' \
+               '9.SEND FILE TO A ROOM (Usage: send file <room number> <file path>)\n' \
+               '10.QUIT (Usage: quit)\n' \
                '\nEnter the command of your choice:'
 
 
 # Function to process all commands
 def handle_client_commands(command, client_socket, client_address):
     global rooms_and_client_sockets  # global variables
-    global current_user
-
+    file_number = 0
     # command Username
     if command.startswith('Username'):
         parts = command.split()  # this has nick as value 0 and satvika as value 1
         if len(parts) >= 2:
             username = parts[1]
-            current_user = username
-            if username not in usernames_and_client_sockets:
-                usernames_and_client_sockets[username] = []
-            usernames_and_client_sockets[username].append(client_socket)  # clients username list
+            if client_socket not in client_sockets_and_usernames:
+                client_sockets_and_usernames[client_socket] = []
+            client_sockets_and_usernames[client_socket].append(username)  # clients username list
             try:
                 print("User " + username + " created ")
                 client_socket.send(bytes('Hello, {}!\r\n'.format(username), 'UTF-8'))
@@ -72,11 +55,12 @@ def handle_client_commands(command, client_socket, client_address):
         parts = command.split()
         if len(parts) >= 2:
             channel = parts[1]
-            if channel not in rooms_and_client_sockets:
-                rooms_and_client_sockets[channel] = []
-            rooms_and_client_sockets[channel].append(client_socket)
             try:
-                client_socket.send(bytes('Created a room: {}\r\n'.format(channel), 'UTF-8'))
+                if channel not in rooms_and_client_sockets:
+                    rooms_and_client_sockets[channel] = []
+                    client_socket.send(bytes('Created a room: {}\r\n'.format(channel), 'UTF-8'))
+                else:
+                    client_socket.send(bytes('Room: {} already exists!\r\n'.format(channel), 'UTF-8'))
             except ConnectionResetError:
                 remove_client_from_rooms(client_socket)
                 client_socket.close()
@@ -102,16 +86,19 @@ def handle_client_commands(command, client_socket, client_address):
         if len(parts) >= 2:
             channel = parts[1]
             if channel not in rooms_and_client_sockets:
-                rooms_and_client_sockets[channel] = []
-            rooms_and_client_sockets[channel].append(client_socket)
-            if channel not in rooms_and_users:
-                rooms_and_users[channel] = []
-            rooms_and_users[channel].append(current_user)
-            try:
-                client_socket.send(bytes('Joined room: {}\r\n'.format(channel), 'UTF-8'))
-            except ConnectionResetError:
-                remove_client_from_rooms(client_socket)
-                client_socket.close()
+                client_socket.send(bytes('Specified Room: {} does not exist!\r\n'.format(channel), 'UTF-8'))
+            elif client_socket in rooms_and_client_sockets[channel]:
+                client_socket.send(bytes("User " + str(client_sockets_and_usernames[client_socket][0]) + ' already present in the room: {}.\r\n'.format(channel), 'UTF-8'))
+            else:
+                rooms_and_client_sockets[channel].append(client_socket)
+                if channel not in rooms_and_users:
+                    rooms_and_users[channel] = []
+                rooms_and_users[channel].append(client_sockets_and_usernames[client_socket][0])
+                try:
+                    client_socket.send(bytes('Joined room: {}\r\n'.format(channel), 'UTF-8'))
+                except ConnectionResetError:
+                    remove_client_from_rooms(client_socket)
+                    client_socket.close()
         else:
             try:
                 client_socket.send(bytes('Invalid command. Usage: join <room number>\r\n', 'UTF-8'))
@@ -125,7 +112,7 @@ def handle_client_commands(command, client_socket, client_address):
             parts = command.split()
             if len(parts) >= 2:
                 channel = parts[1]
-            if len(rooms_and_users[channel]) == 0:
+            if channel not in rooms_and_users or len(rooms_and_users[channel]) == 0:
                 client_socket.send(bytes('There are no members in room: ' + str(channel) + '\r\n', 'UTF-8'))
             else:
                 available_users = 'Available members:  {}'.format(' , '.join(rooms_and_users[channel]))
@@ -133,6 +120,109 @@ def handle_client_commands(command, client_socket, client_address):
         except ConnectionResetError:
             remove_client_from_rooms(client_socket)
             client_socket.close()
+
+    # command "leave <room number>"
+    elif command.startswith('leave'):
+        parts = command.split()
+        if len(parts) >= 2:
+            channel = parts[1]
+            try:
+                if channel not in rooms_and_client_sockets:
+                    client_socket.send(bytes('Specified room {} does not exist.\r\n'.format(channel), 'UTF-8'))
+                if channel not in rooms_and_users or client_sockets_and_usernames[client_socket][0] not in rooms_and_users[channel]:
+                    client_socket.send(bytes('You are currently not present in the room {}.\r\n'.format(channel), 'UTF-8'))
+                clients_in_the_room = rooms_and_users[channel]
+                clients_in_the_room.remove(client_sockets_and_usernames[client_socket][0])
+                rooms_and_users[channel] = clients_in_the_room
+                client_socket.send(bytes('You left the room {}.\r\n'.format(channel), 'UTF-8'))
+            except ConnectionResetError:
+                remove_client_from_rooms(client_socket)
+                client_socket.close()
+        else:
+            try:
+                client_socket.send(bytes('Invalid command. Usage: leave <room number>\r\n', 'UTF-8'))
+            except ConnectionResetError:
+                remove_client_from_rooms(client_socket)
+                client_socket.close()
+
+    # command Display users
+    elif command.startswith('display_all_members'):
+        all_members_list = []
+        for each_client_socket in client_sockets_and_usernames:
+            all_members_list.append(client_sockets_and_usernames[each_client_socket][0])
+        all_available_members = 'All the available members are:  {}'.format(' , '.join(all_members_list))
+        try:
+            client_socket.send(bytes(all_available_members + '\r\n', 'UTF-8'))
+        except ConnectionResetError:
+            remove_client_from_rooms(client_socket)
+            client_socket.close()
+
+    # command "private <username> "<message>"
+    elif command.startswith('private'):
+        parts = command.split()
+        if len(parts) > 2:
+            private_user = parts[1]
+            private_message = ' '.join(parts[2:])
+            try:
+                private_user_client_socket = None
+                for each_client_socket in client_sockets_and_usernames:
+                    if private_user in client_sockets_and_usernames[each_client_socket]:
+                        private_user_client_socket = each_client_socket
+                if private_user_client_socket is None:
+                    client_socket.send(bytes('Specified user: {} does not exist.\r\n'.format(private_user), 'UTF-8'))
+                private_user_client_socket.send(bytes("\n" + str(private_user) + ":>" + private_message + '\r\n', 'UTF-8'))
+                client_socket.send(bytes('Message sent to the user {}.\r\n'.format(private_user), 'UTF-8'))
+            except ConnectionResetError:
+                remove_client_from_rooms(client_socket)
+                client_socket.close()
+        else:
+            try:
+                client_socket.send(bytes('Invalid command. Usage: private <username> <message>\r\n', 'UTF-8'))
+            except ConnectionResetError:
+                remove_client_from_rooms(client_socket)
+                client_socket.close()
+
+    # command "send file <room number> <file content>
+    elif command.startswith('send file'):
+        parts = command.split()
+        if len(parts) > 3:
+            channel = parts[2]
+            file_data = ' '.join(parts[3:])
+            try:
+                # Creating a new file at server end and writing the data
+                received_file = str(client_sockets_and_usernames[client_socket][0]) + 'output' + str(file_number) + '.txt'
+                file_number += file_number
+                open_received_file = open(received_file, "w")
+                if file_data:
+                    open_received_file.write(file_data)
+                # File is closed after data is sent
+                open_received_file.close()
+                client_socket.send(bytes('Received file from {}.\r\n'.format(client_sockets_and_usernames[client_socket][0]), 'UTF-8'))
+                if channel not in rooms_and_client_sockets:
+                    client_socket.send(bytes('Specified room {} does not exist.\r\n'.format(channel), 'UTF-8'))
+                else:
+                    # Reading file and sending to all the users in the given room
+                    file_to_be_sent = open(received_file, "r")
+                    send_file_data = file_to_be_sent.read()
+
+                    clients_in_the_room = rooms_and_client_sockets[channel]
+                    clients_to_which_file_is_sent = []
+                    for each_client in clients_in_the_room:
+                        if each_client != client_socket and each_client not in clients_to_which_file_is_sent:
+                            if send_file_data:
+                                each_client.send(bytes("send file" + ' ' + client_sockets_and_usernames[client_socket][0] + ' ' + str(send_file_data) + '\r\n', 'UTF-8'))
+                            clients_to_which_file_is_sent.append(each_client)
+                    # File is closed after data is sent
+                    file_to_be_sent.close()
+            except ConnectionResetError:
+                remove_client_from_rooms(client_socket)
+                client_socket.close()
+        else:
+            try:
+                client_socket.send(bytes('Invalid command. Usage: private <username> <message>\r\n', 'UTF-8'))
+            except ConnectionResetError:
+                remove_client_from_rooms(client_socket)
+                client_socket.close()
 
     # command send message to a room
     elif command.startswith('send'):
@@ -161,86 +251,14 @@ def handle_client_commands(command, client_socket, client_address):
                 remove_client_from_rooms(client_socket)
                 client_socket.close()
 
-    # command "leave <room number>"
-    elif command.startswith('leave'):
-        parts = command.split()
-        if len(parts) >= 2:
-            channel = parts[1]
-            try:
-                if channel not in rooms_and_client_sockets:
-                    client_socket.send(bytes('Specified room {} does not exist.\r\n'.format(channel), 'UTF-8'))
-                if channel not in rooms_and_users or current_user not in rooms_and_users[channel]:
-                    client_socket.send(bytes('You are currently not present in the room {}.\r\n'.format(channel), 'UTF-8'))
-                clients_in_the_room = rooms_and_users[channel]
-                clients_in_the_room.remove(current_user)
-                rooms_and_users[channel] = clients_in_the_room
-                client_socket.send(bytes('You left the room {}.\r\n'.format(channel), 'UTF-8'))
-            except ConnectionResetError:
-                remove_client_from_rooms(client_socket)
-                client_socket.close()
-        else:
-            try:
-                client_socket.send(bytes('Invalid command. Usage: leave <room number>\r\n', 'UTF-8'))
-            except ConnectionResetError:
-                remove_client_from_rooms(client_socket)
-                client_socket.close()
-
-    # command Display users
-    elif command.startswith('display_all_members'):
-        all_available_members = 'All the available members are:  {}'.format(' , '.join(usernames_and_client_sockets.keys()))
-        try:
-            client_socket.send(bytes(all_available_members + '\r\n', 'UTF-8'))
-        except ConnectionResetError:
-            remove_client_from_rooms(client_socket)
-            client_socket.close()
-
-    # command "private <username> "<message>"
-    elif command.startswith('private'):
-        parts = command.split()
-        if len(parts) > 2:
-            private_user = parts[1]
-            private_message = ' '.join(parts[2:])
-            try:
-                if private_user not in usernames_and_client_sockets:
-                    client_socket.send(bytes('Specified user: {} does not exist.\r\n'.format(private_user), 'UTF-8'))
-                private_user_client_socket = usernames_and_client_sockets[private_user][0]
-                private_user_client_socket.send(bytes(private_message + '\r\n', 'UTF-8'))
-                client_socket.send(bytes('Message sent to the user {}.\r\n'.format(private_user), 'UTF-8'))
-            except ConnectionResetError:
-                remove_client_from_rooms(client_socket)
-                client_socket.close()
-        else:
-            try:
-                client_socket.send(bytes('Invalid command. Usage: private <username> <message>\r\n', 'UTF-8'))
-            except ConnectionResetError:
-                remove_client_from_rooms(client_socket)
-                client_socket.close()
-
     # command QUIT
-    elif command.startswith('QUIT'):
-        parts = command.split()
-        if len(parts) >= 2:
-            channel = parts[1]
-            if channel in rooms_and_client_sockets:
-                if client_socket in rooms_and_client_sockets[channel]:
-                    rooms_and_client_sockets[channel].remove(client_socket)
-                    try:
-                        client_socket.send(bytes('Left channel, bye!: {}\r\n'.format(channel), 'UTF-8'))
-                    except ConnectionResetError:
-                        remove_client_from_rooms(client_socket)
-                        client_socket.close()
-            else:
-                try:
-                    client_socket.send(bytes('You are not in channel: {}\r\n'.format(channel), 'UTF-8'))
-                except ConnectionResetError:
-                    remove_client_from_rooms(client_socket)
-                    client_socket.close()
-        else:
-            try:
-                client_socket.send(bytes('Invalid command. Usage: LEAVE <channel>\r\n', 'UTF-8'))
-            except ConnectionResetError:
-                remove_client_from_rooms(client_socket)
-                client_socket.close()
+    elif command.startswith('quit'):
+        print(f"Client: {client_address} disconnected")
+        for users in rooms_and_users.values():
+            if client_sockets_and_usernames[client_socket][0] in users:
+                users.remove(client_sockets_and_usernames[client_socket][0])
+        client_sockets_and_usernames.pop(client_socket)
+        remove_client_from_rooms(client_socket)
     else:
         client_socket.send(bytes('Invalid command: Type the command from the below list\r\n' + instructions, 'UTF-8'))
 
@@ -248,18 +266,9 @@ def handle_client_commands(command, client_socket, client_address):
 # Functions for error handling
 def remove_client_from_rooms(client_socket):
     global rooms_and_client_sockets
-    global rooms_and_users
-    global usernames_and_client_sockets
-    global current_user
     for channel in rooms_and_client_sockets.values():
         if client_socket in channel:
             channel.remove(client_socket)
-    for users in rooms_and_users.values():
-        if current_user in users:
-            users.remove(current_user)
-    for user_sockets in usernames_and_client_sockets.values():
-        if client_socket in user_sockets:
-            user_sockets.remove(client_socket)
 
 
 # Functions for broadcast message
@@ -267,7 +276,7 @@ def remove_client_from_rooms(client_socket):
 def broadcast_message(room, message):
     if room in rooms_and_client_sockets:
         for client in rooms_and_client_sockets[room]:
-            client.send(bytes(f':localhost {message}\r\n', 'UTF-8'))
+            client.send(bytes(f":localhost {message}\r\n', 'UTF-8"))
 
 
 # Continuously receive and process client messages
@@ -275,9 +284,15 @@ def process_client_messages(client_socket, client_address):
     while True:
         try:
             message = client_socket.recv(2048).decode('UTF-8')
-            print('Received:', message.strip())
-            # handle client commands
-            handle_client_commands(message, client_socket, client_address)
+            if not len(message):
+                print("No msg received")
+                remove_client_from_rooms(client_socket)
+                client_socket.close()
+            else:
+                if "file" not in message:
+                    print('Received:', message.strip())
+                # handle client commands
+                handle_client_commands(message, client_socket, client_address)
         except ConnectionResetError:
             remove_client_from_rooms(client_socket)
             client_socket.close()
@@ -288,15 +303,10 @@ def process_client_messages(client_socket, client_address):
 def accept_clients_messages():
     while True:
         client_socket, client_address = server_socket.accept()
-        print('Client connected:', client_address)
+        print(f'Client {client_address} connected:')
         # Start separate thread to communicate with each client
         thread = threading.Thread(target=process_client_messages, args=(client_socket, client_address))
         thread.start()
-        for each_thread in threading.enumerate():
-            print(each_thread.name)
-            if not each_thread.is_alive():
-                print('Client disconnected:', client_address)
-                remove_client_from_rooms(client_socket)
 
 
 # Create a socket for the server
@@ -304,7 +314,7 @@ server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server_socket.bind((server, port))
 # server can store 5 clients socket for each room
 server_socket.listen(5)
-print('Server is in listen mode')
+print('Server is in listening on ' + str(server) + ":" + str(port))
 
 accept_clients_messages()
 
