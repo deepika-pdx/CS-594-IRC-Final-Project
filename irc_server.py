@@ -6,7 +6,7 @@ rooms_and_client_sockets = {}
 rooms_and_users = {}
 client_sockets_and_usernames = {}
 # server address
-server = 'localhost'
+server = '0.0.0.0'
 # port number
 port = 6667
 
@@ -112,10 +112,10 @@ def handle_client_commands(command, client_socket, client_address):
             parts = command.split()
             if len(parts) >= 2:
                 channel = parts[1]
-            if channel not in rooms_and_users or len(rooms_and_users[channel]) == 0:
-                client_socket.send(bytes('There are no members in room: ' + str(channel) + '\r\n', 'UTF-8'))
-            else:
-                available_users = 'Available members:  {}'.format(' , '.join(rooms_and_users[channel]))
+                if channel not in rooms_and_users or len(rooms_and_users[channel]) == 0:
+                    client_socket.send(bytes('There are no members in room: ' + str(channel) + '\r\n', 'UTF-8'))
+                else:
+                    available_users = 'Available members:  {}'.format(' , '.join(rooms_and_users[channel]))
                 client_socket.send(bytes(available_users + '\r\n', 'UTF-8'))
         except ConnectionResetError:
             remove_client_from_rooms(client_socket)

@@ -4,8 +4,8 @@ import socket
 import threading
 import sys
 
-#server = '35.212.252.20'  # server address
-server = 'localhost'
+server = '35.212.252.20'  # server address
+#server = 'localhost'
 port = 6667  # port number
 
 # Connect to the server
