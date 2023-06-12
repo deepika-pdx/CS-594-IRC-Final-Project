@@ -129,12 +129,13 @@ def handle_client_commands(command, client_socket, client_address):
             try:
                 if channel not in rooms_and_client_sockets:
                     client_socket.send(bytes('Specified room {} does not exist.\r\n'.format(channel), 'UTF-8'))
-                if channel not in rooms_and_users or client_sockets_and_usernames[client_socket][0] not in rooms_and_users[channel]:
+                elif channel not in rooms_and_users or client_sockets_and_usernames[client_socket][0] not in rooms_and_users[channel]:
                     client_socket.send(bytes('You are currently not present in the room {}.\r\n'.format(channel), 'UTF-8'))
-                clients_in_the_room = rooms_and_users[channel]
-                clients_in_the_room.remove(client_sockets_and_usernames[client_socket][0])
-                rooms_and_users[channel] = clients_in_the_room
-                client_socket.send(bytes('You left the room {}.\r\n'.format(channel), 'UTF-8'))
+                else:
+                    clients_in_the_room = rooms_and_users[channel]
+                    clients_in_the_room.remove(client_sockets_and_usernames[client_socket][0])
+                    rooms_and_users[channel] = clients_in_the_room
+                    client_socket.send(bytes('You left the room {}.\r\n'.format(channel), 'UTF-8'))
             except ConnectionResetError:
                 remove_client_from_rooms(client_socket)
                 client_socket.close()
@@ -170,7 +171,7 @@ def handle_client_commands(command, client_socket, client_address):
                         private_user_client_socket = each_client_socket
                 if private_user_client_socket is None:
                     client_socket.send(bytes('Specified user: {} does not exist.\r\n'.format(private_user), 'UTF-8'))
-                private_user_client_socket.send(bytes("\n" + str(private_user) + ":>" + private_message + '\r\n', 'UTF-8'))
+                private_user_client_socket.send(bytes("\n" + str(client_sockets_and_usernames[client_socket][0]) + ":>" + private_message + '\r\n', 'UTF-8'))
                 client_socket.send(bytes('Message sent to the user {}.\r\n'.format(private_user), 'UTF-8'))
             except ConnectionResetError:
                 remove_client_from_rooms(client_socket)
